@@ -7,10 +7,13 @@ all: wfc.exe
 install: wfc.exe
 	cp wfc.exe $(DESTDIR)/wfc.exe
 
-wfc.exe:
-	$(CSC) /reference:System.Drawing.dll *.cs /out:$@
+wfc.exe: Options.cs
+	$(CSC) /d:NDESK_OPTIONS /reference:System.Drawing.dll *.cs /out:$@
+
+Options.cs:
+	cp `pkg-config --variable=Sources mono-options` .
 
 .PHONY: clean
 clean:
-	$(RM) wfc.exe
+	$(RM) wfc.exe Options.cs
 

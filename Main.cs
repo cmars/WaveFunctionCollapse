@@ -9,13 +9,113 @@ The software is provided "as is", without warranty of any kind, express or impli
 using System;
 using System.Xml;
 
+using NDesk.Options;
+
 static class Program
 {
-	static void Main()
+	static void Main(string[] args)
 	{
+		string samplesFrom = "";
+		string inputPath = "";
+		string outputFile = "out.bmp";
+
+		string modelName = "overlapping";
+		bool periodic = false;
+		int width = 48;
+		int height = 48;
+		int limit = 0;
+
+		int overlapN = 2;
+		int overlapSymmetry = 8;
+		int overlapFoundation = 0;
+		bool overlapPeriodicInput = true;
+
+		string tiledSubset = "";
+		bool tiledBlack = false;
+
+		var p = new OptionSet() {
+			{ "samples-from=", "XML {FILE} containing samples to process",
+				v => samplesFrom = v },
+			{ "i|input=", "Input path, BMP image for --model=overlapping, directory containing data.xml for --model=simpletiled",
+				v => inputPath = v },
+			{ "o|output=", "Output file, default `out.bmp`",
+				v => outputFile = v },
+			{ "w|width=", "Tiled image width, when --model=simpletiled",
+				(int v) => width = v },
+			{ "h|height=", "Tiled image height, when --model=simpletiled",
+				(int v) => height = v },
+			{ "m|model=", "Model type: `overlapping` (default) or `simpletiled`",
+				v => modelName = v },
+			{ "n=", "N parameter, when --model=overlapping",
+				(int v) => overlapN  = v },
+			{ "limit=", "Model limit",
+				(int v) => limit  = v },
+			{ "p|periodic=", "Periodic",
+				(bool v) => periodic = v },
+			{ "symmetry=", "Symmetry, when --model=overlapping",
+				(int v) => overlapSymmetry = v },
+			{ "foundation=", "Foundation, when --model=overlapping",
+				(int v) => overlapFoundation = v },
+			{ "pi|periodicInput=", "Periodic input, when --model=overlapping",
+				(bool v) => overlapPeriodicInput = v },
+			{ "subset=", "Subset name, when --model=simpletiled",
+				v => tiledSubset = v },
+			{ "black=", "Black, when --model=simpletiled",
+				(bool v) => tiledBlack = v },
+		};
+		try {
+			p.Parse(args);
+		}
+		catch (OptionException e) {
+			Console.Write("wfc: ");
+			Console.Write(e.Message);
+			return;
+		}
+		
+		if (samplesFrom != "") {
+			processSamplesFrom(samplesFrom);
+			return;
+		}
+
+		if (inputPath == "") {
+			Console.Write("wfc: missing input");
+			return;
+		}
+
+		Console.Write($"inputPath {inputPath}");
+
+		Random random = new Random();
+		Model model;
+
+		if (modelName == "overlapping") {
+			model = new OverlappingModel(
+				inputPath, overlapN, width, height, overlapPeriodicInput, periodic, overlapSymmetry, overlapFoundation);
+		} else if (modelName == "simpletiled") {
+			model = new SimpleTiledModel(
+				inputPath, tiledSubset, width, height, periodic, tiledBlack);
+		} else {
+			throw new Exception("unsupported modelName " + modelName);
+		}
+
+		for (int k = 0; k < 10; k++)
+		{
+			Console.Write("> ");
+			int seed = random.Next();
+			bool finished = model.Run(seed, limit);
+			if (finished)
+			{
+				Console.WriteLine("DONE");
+				model.Graphics().Save($"{outputFile}");
+				break;
+			}
+			else Console.WriteLine("CONTRADICTION");
+		}
+	}
+
+	static void processSamplesFrom(string samplesFrom) {
 		Random random = new Random();
 		var xdoc = new XmlDocument();
-		xdoc.Load("samples.xml");
+		xdoc.Load(samplesFrom);
 
 		int counter = 1;
 		foreach (XmlNode xnode in xdoc.FirstChild.ChildNodes)
@@ -24,11 +124,16 @@ static class Program
 			string name = xnode.Get<string>("name");
 			Console.WriteLine($"< {name}");
 
-			if (xnode.Name == "overlapping") model = new OverlappingModel(name, xnode.Get("N", 2), xnode.Get("width", 48), xnode.Get("height", 48), 
-				xnode.Get("periodicInput", true), xnode.Get("periodic", false), xnode.Get("symmetry", 8), xnode.Get("foundation", 0));
-			else if (xnode.Name == "simpletiled") model = new SimpleTiledModel(name, xnode.Get<string>("subset"), 
-				xnode.Get("width", 10), xnode.Get("height", 10), xnode.Get("periodic", false), xnode.Get("black", false));
-			else continue;
+			if (xnode.Name == "overlapping") {
+				string inputPath = $"samples/{name}.bmp";
+				model = new OverlappingModel(inputPath, xnode.Get("N", 2), xnode.Get("width", 48), xnode.Get("height", 48), 
+					xnode.Get("periodicInput", true), xnode.Get("periodic", false),
+					xnode.Get("symmetry", 8), xnode.Get("foundation", 0));
+			} else if (xnode.Name == "simpletiled") {
+				string inputPath = $"samples/{name}";
+				model = new SimpleTiledModel(inputPath, xnode.Get<string>("subset"), 
+					xnode.Get("width", 10), xnode.Get("height", 10), xnode.Get("periodic", false), xnode.Get("black", false));
+			} else continue;
 
 			for (int i = 0; i < xnode.Get("screenshots", 2); i++)
 			{
